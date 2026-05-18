@@ -9,13 +9,20 @@ if (secret.length < 32 && process.env.NODE_ENV === "production") {
   console.warn("[hermes-webui] SESSION_SECRET should be >=32 chars in production.");
 }
 
+// Secure cookies require HTTPS. Default: on in production. Set
+// COOKIE_INSECURE=1 to disable when testing over plain HTTP (e.g. before
+// a reverse proxy + TLS is set up). Never leave it disabled in real use.
+const cookieSecure = process.env.COOKIE_INSECURE === "1"
+  ? false
+  : process.env.NODE_ENV === "production";
+
 export const sessionOptions: SessionOptions = {
   password: secret.padEnd(32, "x"),
   cookieName: "hermes_webui_session",
   cookieOptions: {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSecure,
     maxAge: 60 * 60 * 24 * 7,
   },
 };
