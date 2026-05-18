@@ -1,0 +1,31 @@
+# Isolated stack: only this container, only one published port.
+# Mount your existing Hermes home into /data/hermes (read-write).
+# The dashboard expects $HERMES_HOME/profiles/<name>/ — create that
+# directory layout on the host once before first run, or use the
+# Profiles tab to create them.
+
+services:
+  hermes-webui:
+    build: .
+    image: hermes-webui:local
+    container_name: hermes-webui
+    restart: unless-stopped
+    env_file: .env
+    # Bind only to localhost on the VPS; expose via Nginx + Let's Encrypt.
+    # Change to "0.0.0.0:7878:7878" if you want direct external access.
+    ports:
+      - "127.0.0.1:7878:7878"
+    volumes:
+      # Hermes data — point HOST path at wherever your profiles live.
+      - ${HERMES_DATA_DIR:-./data/hermes}:/data/hermes
+    # Keeps the container responsive when hermes setup is run interactively
+    # via `docker compose exec -it hermes-webui hermes setup`.
+    tty: true
+    stdin_open: true
+    # No other services touched. Network is the default bridge,
+    # isolated from anything else on the VPS.
+    networks: [hermesnet]
+
+networks:
+  hermesnet:
+    name: hermes-webui-net
