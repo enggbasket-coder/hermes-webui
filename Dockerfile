@@ -31,10 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 # Install hermes-agent as root → binary at /usr/local/bin/hermes.
-# `< /dev/null` keeps the installer in non-interactive mode (no prompts).
-RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh \
-      | bash < /dev/null \
- && hermes version || (echo "hermes install failed — check logs above" && exit 1)
+# The pipe itself makes the install non-interactive (stdin is not a tty);
+# do NOT redirect bash's stdin or the pipe breaks and curl errors with 23.
+RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash \
+ && hermes version
 
 ENV NEXT_TELEMETRY_DISABLED=1 \
     NODE_ENV=production \
