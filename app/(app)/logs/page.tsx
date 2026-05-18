@@ -1,8 +1,16 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 export default function LogsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-ink-dim">Loading…</div>}>
+      <LogsInner />
+    </Suspense>
+  );
+}
+
+function LogsInner() {
   const sp = useSearchParams();
   const profile = sp.get("profile") || "";
   const [file, setFile] = useState("gateway.log");

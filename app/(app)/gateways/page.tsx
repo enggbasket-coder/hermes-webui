@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { StatusDot } from "@/components/StatusDot";
 import { Play, Square, RotateCw, RefreshCw } from "lucide-react";
@@ -7,6 +7,14 @@ import { Play, Square, RotateCw, RefreshCw } from "lucide-react";
 type Status = { running: boolean; raw: string };
 
 export default function GatewaysPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-ink-dim">Loading…</div>}>
+      <GatewaysInner />
+    </Suspense>
+  );
+}
+
+function GatewaysInner() {
   const sp = useSearchParams();
   const profile = sp.get("profile") || "";
   const [status, setStatus] = useState<Status | null>(null);
