@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
+import type { Readable } from "node:stream";
 import { HERMES_BIN, HERMES_HOME } from "./paths";
 
 export type CliResult = { code: number; stdout: string; stderr: string };
@@ -37,7 +38,7 @@ export function runHermes(
 export function spawnHermes(
   profile: string | null,
   args: string[],
-): ChildProcessWithoutNullStreams {
+): ChildProcessByStdio<null, Readable, Readable> {
   const fullArgs = profile ? ["-p", profile, ...args] : args;
   return spawn(HERMES_BIN, fullArgs, {
     env: { ...process.env, HERMES_HOME },
