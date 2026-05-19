@@ -41,7 +41,8 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     HERMES_HOME=/data/hermes \
     HERMES_BIN=/usr/local/bin/hermes \
     PORT=7878 \
-    HOME=/root
+    HOME=/root \
+    HOSTNAME=0.0.0.0
 
 # Next.js standalone bundle.
 COPY --from=build /app/.next/standalone ./
