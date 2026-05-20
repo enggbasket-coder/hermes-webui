@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import path from "node:path";
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { profilesRoot, profileDir, profileFile, HERMES_BIN, HERMES_HOME } from "./paths";
 import { runHermes } from "./cli";
 
@@ -91,24 +91,42 @@ export async function listProfiles(): Promise<Profile[]> {
 // than a PID file (PID files get stale; pgrep is real-time).
 // ---------------------------------------------------------------------------
 
-function gatewayPattern(profile: string) {
-  // The `hermes` CLI on PATH is a bash wrapper that `exec`s into the venv's
-  // own hermes binary (e.g. /usr/local/lib/hermes-agent/venv/bin/hermes).
-  // `exec` rewrites the process's argv, so by the time we pgrep, the path
-  // prefix has changed from the one we spawned with. Match by the trailing
-  // argv pattern, which is identical before AND after the exec.
-  return `hermes -p ${profile} gateway run`;
-}
-
+// Find gateway processes by walking /proc directly.
+//
+// Earlier versions of this code used `execSync("pgrep -f ...")`. That goes
+// through /bin/sh -c, which produces a shell process whose argv CONTAINS the
+// search pattern as a substring. pgrep then matched the shell itself,
+// returning a stale PID that disappeared the instant the call completed —
+// causing the dashboard to permanently report "already running" and refuse
+// to spawn a real gateway.
+//
+// Walking /proc directly avoids both the self-match problem and any external
+// command invocation. We match argv exactly: argv[0] must be a path ending in
+// "hermes", followed by `-p <profile> gateway run`.
 function findGatewayPids(profile: string): number[] {
-  try {
-    const out = execSync(`pgrep -f "${gatewayPattern(profile)}"`, {
-      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
-    });
-    return out.trim().split("\n").filter(Boolean).map((s) => parseInt(s, 10));
-  } catch {
-    return []; // pgrep exits 1 when no match
+  const pids: number[] = [];
+  let entries: string[] = [];
+  try { entries = fsSync.readdirSync("/proc"); } catch { return pids; }
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue;
+    let cmdline: string;
+    try {
+      cmdline = fsSync.readFileSync(`/proc/${entry}/cmdline`, "utf8");
+    } catch { continue; /* process exited between readdir and now */ }
+    const args = cmdline.split("\0").filter(Boolean);
+    if (args.length < 5) continue;
+    // argv[0] is the binary path (e.g. /usr/local/bin/hermes BEFORE the
+    // wrapper's exec, or /usr/local/lib/hermes-agent/venv/bin/hermes AFTER).
+    // Match by basename so we accept both.
+    if (path.basename(args[0]) !== "hermes") continue;
+    if (args[1] === "-p" &&
+        args[2] === profile &&
+        args[3] === "gateway" &&
+        args[4] === "run") {
+      pids.push(parseInt(entry, 10));
+    }
   }
+  return pids;
 }
 
 export async function getGatewayStatus(name: string): Promise<GatewayStatus> {
