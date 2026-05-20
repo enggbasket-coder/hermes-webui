@@ -115,15 +115,23 @@ function findGatewayPids(profile: string): number[] {
     } catch { continue; /* process exited between readdir and now */ }
     const args = cmdline.split("\0").filter(Boolean);
     if (args.length < 5) continue;
-    // argv[0] is the binary path (e.g. /usr/local/bin/hermes BEFORE the
-    // wrapper's exec, or /usr/local/lib/hermes-agent/venv/bin/hermes AFTER).
-    // Match by basename so we accept both.
-    if (path.basename(args[0]) !== "hermes") continue;
-    if (args[1] === "-p" &&
-        args[2] === profile &&
-        args[3] === "gateway" &&
-        args[4] === "run") {
-      pids.push(parseInt(entry, 10));
+    // The running gateway's cmdline depends on wrapper chain:
+    //   Direct binary:  /usr/local/bin/hermes -p testbot gateway run
+    //   Via venv shebang: /…/python3 /…/hermes -p testbot gateway run
+    // So we scan for the sequence `<…/hermes> -p <profile> gateway run`
+    // starting at any argv index. This matches both cases and ignores
+    // anything else (shells, our own dashboard process, etc.) because the
+    // exact 5-arg sequence with 'hermes' basename only appears in real
+    // hermes invocations.
+    for (let i = 0; i + 4 < args.length; i++) {
+      if (path.basename(args[i]) === "hermes" &&
+          args[i + 1] === "-p" &&
+          args[i + 2] === profile &&
+          args[i + 3] === "gateway" &&
+          args[i + 4] === "run") {
+        pids.push(parseInt(entry, 10));
+        break;
+      }
     }
   }
   return pids;
