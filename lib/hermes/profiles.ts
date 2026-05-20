@@ -145,6 +145,37 @@ export async function getGatewayStatus(name: string): Promise<GatewayStatus> {
   return { running: false, raw: "stopped" };
 }
 
+// ---------------------------------------------------------------------------
+// Persistent "wanted state" flag.
+//
+// When you click Start in the dashboard, we write a marker file inside the
+// profile's directory. On container boot, instrumentation.ts walks all
+// profiles and restarts any with the marker set. This way intent survives
+// container restarts, VPS reboots, image rebuilds, etc — without coupling
+// us to systemd or external schedulers.
+// ---------------------------------------------------------------------------
+
+function wantedFile(name: string) {
+  return profileFile(name, ".gateway-wanted");
+}
+
+export function isGatewayWanted(name: string): boolean {
+  try {
+    fsSync.accessSync(wantedFile(name), fsSync.constants.F_OK);
+    return true;
+  } catch { return false; }
+}
+
+async function markGatewayWanted(name: string, wanted: boolean) {
+  const f = wantedFile(name);
+  if (wanted) {
+    await fs.mkdir(path.dirname(f), { recursive: true });
+    await fs.writeFile(f, new Date().toISOString() + "\n");
+  } else {
+    try { await fs.unlink(f); } catch { /* already gone */ }
+  }
+}
+
 export type GatewayActionResult = {
   ok: boolean;
   pid?: number;
@@ -187,6 +218,8 @@ export async function startGateway(name: string): Promise<GatewayActionResult> {
       status: { running: false, raw: "failed to start" },
     };
   }
+  // Record user intent so the gateway is auto-restarted on container reboot.
+  await markGatewayWanted(name, true);
   return {
     ok: true,
     pid: alive[0],
@@ -196,6 +229,8 @@ export async function startGateway(name: string): Promise<GatewayActionResult> {
 }
 
 export async function stopGateway(name: string): Promise<GatewayActionResult> {
+  // User explicitly asked to stop — clear the auto-restart flag.
+  await markGatewayWanted(name, false);
   const pids = findGatewayPids(name);
   if (pids.length === 0) {
     return {
@@ -224,6 +259,33 @@ export async function restartGateway(name: string): Promise<GatewayActionResult>
   await stopGateway(name);
   await new Promise((r) => setTimeout(r, 1000));
   return startGateway(name);
+}
+
+// Called once at Next.js server startup (see instrumentation.ts). Scans every
+// profile, and for any with the wanted-state flag set, spawns its gateway.
+// Errors are logged but do not block startup of other profiles or the
+// dashboard itself.
+export async function restoreWantedGateways(): Promise<void> {
+  let names: string[];
+  try { names = await listProfileNames(); }
+  catch (e) {
+    console.warn("[hermes-webui] restoreWantedGateways: cannot list profiles:", e);
+    return;
+  }
+  const wanted = names.filter(isGatewayWanted);
+  if (wanted.length === 0) {
+    console.log("[hermes-webui] no gateways flagged for auto-restart");
+    return;
+  }
+  console.log(`[hermes-webui] restoring ${wanted.length} gateway(s): ${wanted.join(", ")}`);
+  for (const name of wanted) {
+    try {
+      const r = await startGateway(name);
+      console.log(`[hermes-webui] ${name}: ${r.message}`);
+    } catch (e) {
+      console.error(`[hermes-webui] ${name}: failed to restore:`, e);
+    }
+  }
 }
 
 export async function createProfile(name: string): Promise<void> {

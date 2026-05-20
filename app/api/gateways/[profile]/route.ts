@@ -4,6 +4,7 @@ import {
   startGateway,
   stopGateway,
   restartGateway,
+  isGatewayWanted,
 } from "@/lib/hermes/profiles";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,10 @@ const ACTIONS = new Set(["start", "stop", "restart", "status"]);
 
 export async function GET(_: Request, { params }: { params: Promise<{ profile: string }> }) {
   const { profile } = await params;
-  return NextResponse.json({ status: await getGatewayStatus(profile) });
+  return NextResponse.json({
+    status: await getGatewayStatus(profile),
+    wanted: isGatewayWanted(profile),
+  });
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ profile: string }> }) {
@@ -40,5 +44,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ profile
     stdout: result.message,
     stderr: "",
     status: result.status,
+    wanted: isGatewayWanted(profile),
   });
 }

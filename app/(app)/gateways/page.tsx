@@ -5,6 +5,7 @@ import { StatusDot } from "@/components/StatusDot";
 import { Play, Square, RotateCw, RefreshCw } from "lucide-react";
 
 type Status = { running: boolean; raw: string };
+type GatewayState = { status: Status | null; wanted: boolean };
 
 export default function GatewaysPage() {
   return (
@@ -17,14 +18,16 @@ export default function GatewaysPage() {
 function GatewaysInner() {
   const sp = useSearchParams();
   const profile = sp.get("profile") || "";
-  const [status, setStatus] = useState<Status | null>(null);
+  const [state, setState] = useState<GatewayState>({ status: null, wanted: false });
   const [busy, setBusy] = useState<string | null>(null);
   const [output, setOutput] = useState<string>("");
+  const status = state.status;
 
   async function refresh() {
     if (!profile) return;
     const r = await fetch(`/api/gateways/${encodeURIComponent(profile)}`, { cache: "no-store" });
-    setStatus((await r.json()).status);
+    const j = await r.json();
+    setState({ status: j.status, wanted: !!j.wanted });
   }
   async function act(action: "start" | "stop" | "restart") {
     if (!profile) return;
@@ -35,7 +38,7 @@ function GatewaysInner() {
     });
     const j = await r.json();
     setBusy(null);
-    setStatus(j.status);
+    setState({ status: j.status, wanted: !!j.wanted });
     setOutput((j.stdout || "") + (j.stderr ? "\n[stderr]\n" + j.stderr : ""));
   }
 
@@ -59,6 +62,21 @@ function GatewaysInner() {
         <div className="flex items-center gap-3">
           <StatusDot ok={!!status?.running} />
           <div className="text-lg">{status?.running ? "Running" : "Stopped"}</div>
+          <span
+            className={
+              "ml-auto text-[11px] px-2 py-0.5 rounded-full border " +
+              (state.wanted
+                ? "border-ok/40 text-ok bg-ok/10"
+                : "border-line text-ink-faint bg-bg-elev")
+            }
+            title={
+              state.wanted
+                ? "Will be auto-started if the container restarts"
+                : "Will NOT be auto-started on container restart"
+            }
+          >
+            auto-restart: {state.wanted ? "on" : "off"}
+          </span>
         </div>
         <div className="mt-4 flex gap-2">
           <Btn icon={<Play size={14} />} label="Start" onClick={() => act("start")}  disabled={busy !== null || status?.running} />
