@@ -36,6 +36,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash \
  && hermes version
 
+# Platform adapters are installed lazily by `hermes setup gateway` on the
+# host that runs the wizard. Inside the container the wizard never runs,
+# so we install the Telegram adapter manually into Hermes's venv.
+# Add more adapters here if/when you wire other platforms (e.g.
+# python-discord, python-slack-bolt, mattermost-bot).
+RUN /root/.local/bin/uv pip install \
+      --python /usr/local/lib/hermes-agent/venv/bin/python \
+      python-telegram-bot
+
 ENV NEXT_TELEMETRY_DISABLED=1 \
     NODE_ENV=production \
     HERMES_HOME=/data/hermes \

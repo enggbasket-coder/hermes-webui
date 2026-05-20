@@ -92,8 +92,12 @@ export async function listProfiles(): Promise<Profile[]> {
 // ---------------------------------------------------------------------------
 
 function gatewayPattern(profile: string) {
-  // Matches the argv we spawn. Anchored to avoid false positives.
-  return `${HERMES_BIN} -p ${profile} gateway run`;
+  // The `hermes` CLI on PATH is a bash wrapper that `exec`s into the venv's
+  // own hermes binary (e.g. /usr/local/lib/hermes-agent/venv/bin/hermes).
+  // `exec` rewrites the process's argv, so by the time we pgrep, the path
+  // prefix has changed from the one we spawned with. Match by the trailing
+  // argv pattern, which is identical before AND after the exec.
+  return `hermes -p ${profile} gateway run`;
 }
 
 function findGatewayPids(profile: string): number[] {
