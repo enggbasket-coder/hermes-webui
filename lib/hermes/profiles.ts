@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
-import { profilesRoot, profileDir } from "./paths";
+import { execSync, spawn } from "node:child_process";
+import { profilesRoot, profileDir, profileFile, HERMES_BIN, HERMES_HOME } from "./paths";
 import { runHermes } from "./cli";
 
 export type Profile = {
@@ -75,14 +77,123 @@ export async function listProfiles(): Promise<Profile[]> {
   return (await Promise.all(names.map(getProfile))).filter((p): p is Profile => !!p);
 }
 
+// ---------------------------------------------------------------------------
+// Gateway lifecycle.
+//
+// Hermes refuses `gateway start` inside a Docker container ("not applicable")
+// because it expects to register a systemd unit. The container-friendly path
+// is `gateway run`, which polls in the foreground. We spawn it DETACHED so it
+// survives:
+//   - the API request returning,
+//   - the user closing the dashboard tab,
+//   - the user closing their SSH/browser-terminal session.
+// We then track it by pgrep on the exact argv pattern, which is more reliable
+// than a PID file (PID files get stale; pgrep is real-time).
+// ---------------------------------------------------------------------------
+
+function gatewayPattern(profile: string) {
+  // Matches the argv we spawn. Anchored to avoid false positives.
+  return `${HERMES_BIN} -p ${profile} gateway run`;
+}
+
+function findGatewayPids(profile: string): number[] {
+  try {
+    const out = execSync(`pgrep -f "${gatewayPattern(profile)}"`, {
+      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+    });
+    return out.trim().split("\n").filter(Boolean).map((s) => parseInt(s, 10));
+  } catch {
+    return []; // pgrep exits 1 when no match
+  }
+}
+
 export async function getGatewayStatus(name: string): Promise<GatewayStatus> {
-  // `hermes gateway status` is documented; output format is not, so we
-  // inspect it heuristically and surface the raw text in the UI.
-  const r = await runHermes(name, ["gateway", "status"], { timeoutMs: 5000 });
-  const text = (r.stdout + "\n" + r.stderr).toLowerCase();
-  const running = /running|active|started|online/.test(text) &&
-                  !/not running|stopped|inactive/.test(text);
-  return { running, raw: r.stdout || r.stderr };
+  const pids = findGatewayPids(name);
+  if (pids.length > 0) {
+    return { running: true, raw: `gateway running (pid ${pids[0]})` };
+  }
+  return { running: false, raw: "stopped" };
+}
+
+export type GatewayActionResult = {
+  ok: boolean;
+  pid?: number;
+  message: string;
+  status: GatewayStatus;
+};
+
+export async function startGateway(name: string): Promise<GatewayActionResult> {
+  const existing = findGatewayPids(name);
+  if (existing.length > 0) {
+    return {
+      ok: false,
+      pid: existing[0],
+      message: `Already running (pid ${existing.join(", ")}).`,
+      status: { running: true, raw: `running (pid ${existing[0]})` },
+    };
+  }
+  // Make sure logs/ exists; redirect stdout+stderr there so the Logs tab
+  // shows real-time gateway output.
+  const logDir = profileFile(name, "logs");
+  await fs.mkdir(logDir, { recursive: true });
+  const logPath = path.join(logDir, "gateway.log");
+  const fd = fsSync.openSync(logPath, "a");
+  fsSync.writeSync(fd, `\n=== gateway started ${new Date().toISOString()} ===\n`);
+
+  const child = spawn(HERMES_BIN, ["-p", name, "gateway", "run"], {
+    env: { ...process.env, HERMES_HOME },
+    stdio: ["ignore", fd, fd],
+    detached: true,
+  });
+  child.unref(); // let event loop exit even if child is alive
+
+  // Brief grace period so we can detect an immediate crash (bad config etc).
+  await new Promise((r) => setTimeout(r, 1500));
+  const alive = findGatewayPids(name);
+  if (alive.length === 0) {
+    return {
+      ok: false,
+      message: "Process exited immediately — check Logs tab (gateway.log).",
+      status: { running: false, raw: "failed to start" },
+    };
+  }
+  return {
+    ok: true,
+    pid: alive[0],
+    message: `Started (pid ${alive[0]}). Output streaming to logs/gateway.log.`,
+    status: { running: true, raw: `running (pid ${alive[0]})` },
+  };
+}
+
+export async function stopGateway(name: string): Promise<GatewayActionResult> {
+  const pids = findGatewayPids(name);
+  if (pids.length === 0) {
+    return {
+      ok: true,
+      message: "Not running.",
+      status: { running: false, raw: "stopped" },
+    };
+  }
+  for (const pid of pids) {
+    try { process.kill(pid, "SIGTERM"); } catch {}
+  }
+  // Give it 3s to shut down cleanly, then SIGKILL anything still alive.
+  await new Promise((r) => setTimeout(r, 3000));
+  const stillAlive = findGatewayPids(name);
+  for (const pid of stillAlive) {
+    try { process.kill(pid, "SIGKILL"); } catch {}
+  }
+  return {
+    ok: true,
+    message: `Stopped ${pids.length} process${pids.length === 1 ? "" : "es"}.`,
+    status: { running: false, raw: "stopped" },
+  };
+}
+
+export async function restartGateway(name: string): Promise<GatewayActionResult> {
+  await stopGateway(name);
+  await new Promise((r) => setTimeout(r, 1000));
+  return startGateway(name);
 }
 
 export async function createProfile(name: string): Promise<void> {

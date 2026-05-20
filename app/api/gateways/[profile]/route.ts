@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
-import { runHermes } from "@/lib/hermes/cli";
-import { getGatewayStatus } from "@/lib/hermes/profiles";
+import {
+  getGatewayStatus,
+  startGateway,
+  stopGateway,
+  restartGateway,
+} from "@/lib/hermes/profiles";
 
 export const dynamic = "force-dynamic";
 
@@ -15,14 +19,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ profile
   const { profile } = await params;
   const { action } = await req.json().catch(() => ({}));
   if (!ACTIONS.has(action)) {
-    return NextResponse.json({ error: "action must be start|stop|restart|status" }, { status: 400 });
+    return NextResponse.json(
+      { error: "action must be start|stop|restart|status" },
+      { status: 400 },
+    );
   }
-  const r = await runHermes(profile, ["gateway", action], { timeoutMs: 15_000 });
+
+  if (action === "status") {
+    return NextResponse.json({ ok: true, status: await getGatewayStatus(profile) });
+  }
+
+  let result;
+  if (action === "start") result = await startGateway(profile);
+  else if (action === "stop") result = await stopGateway(profile);
+  else result = await restartGateway(profile);
+
   return NextResponse.json({
-    ok: r.code === 0,
-    code: r.code,
-    stdout: r.stdout,
-    stderr: r.stderr,
-    status: await getGatewayStatus(profile),
+    ok: result.ok,
+    pid: result.pid,
+    stdout: result.message,
+    stderr: "",
+    status: result.status,
   });
 }
