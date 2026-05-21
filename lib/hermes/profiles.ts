@@ -184,12 +184,17 @@ export type GatewayActionResult = {
 };
 
 export async function startGateway(name: string): Promise<GatewayActionResult> {
+  // Always record user intent — even if the process happens to already be
+  // alive (e.g. just auto-restored). Clicking Start means "I want this
+  // running across reboots", regardless of current state.
+  await markGatewayWanted(name, true);
+
   const existing = findGatewayPids(name);
   if (existing.length > 0) {
     return {
-      ok: false,
+      ok: true,
       pid: existing[0],
-      message: `Already running (pid ${existing.join(", ")}).`,
+      message: `Already running (pid ${existing.join(", ")}). Auto-restart ensured.`,
       status: { running: true, raw: `running (pid ${existing[0]})` },
     };
   }
