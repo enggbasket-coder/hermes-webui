@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { StatusDot } from "@/components/StatusDot";
-import { Trash2, Plus, Pencil } from "lucide-react";
+import { Trash2, Plus, Pencil, Wand2 } from "lucide-react";
 
 type P = { name: string; model?: string; skillCount: number; sessionCount: number; gateway: { running: boolean } };
 
@@ -46,23 +47,36 @@ export default function ProfilesPage() {
 
   return (
     <div className="p-8 space-y-6 max-w-4xl">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Profiles</h1>
-        <p className="text-ink-dim text-sm mt-1">Create, rename, or delete Hermes profiles.</p>
+      <header className="flex items-start gap-4">
+        <div className="flex-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Profiles</h1>
+          <p className="text-ink-dim text-sm mt-1">Manage Hermes profiles.</p>
+        </div>
+        <Link
+          href="/profiles/new"
+          className="inline-flex items-center gap-1.5 bg-accent text-bg font-medium px-3 py-2 rounded-lg hover:bg-accent-hover"
+        >
+          <Wand2 size={14} /> New profile (wizard)
+        </Link>
       </header>
 
       <div className="flex gap-2">
         <input
           value={newName} onChange={(e) => setNewName(e.target.value)}
-          placeholder="new-profile-name"
+          placeholder="quick-create empty profile"
           className="flex-1 bg-bg-card border border-line rounded-lg px-3 py-2 outline-none focus:border-accent"
         />
         <button
           onClick={create} disabled={!newName || busy}
-          className="inline-flex items-center gap-1.5 bg-accent text-bg px-3 py-2 rounded-lg disabled:opacity-50 hover:bg-accent-hover"
+          className="inline-flex items-center gap-1.5 bg-bg-elev border border-line text-ink-dim px-3 py-2 rounded-lg disabled:opacity-50 hover:text-ink"
+          title="Creates an empty profile directory only. Use the wizard for full setup."
         >
-          <Plus size={14} /> Create
+          <Plus size={14} /> Quick
         </button>
+      </div>
+      <div className="text-xs text-ink-faint -mt-3">
+        Quick create makes an empty profile directory only. For a fully provisioned bot
+        (skills, model, Telegram gateway) use the wizard above.
       </div>
       {err && <div className="text-err text-sm">{err}</div>}
 

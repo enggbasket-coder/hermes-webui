@@ -2,6 +2,7 @@ import { listProfiles } from "@/lib/hermes/profiles";
 import { StatusDot } from "@/components/StatusDot";
 import Link from "next/link";
 import { HERMES_HOME } from "@/lib/hermes/paths";
+import { Wand2 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -13,12 +14,20 @@ export default async function DashboardHome() {
 
   return (
     <div className="p-8 space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-ink-dim text-sm mt-1">
-          {profiles.length} profile{profiles.length === 1 ? "" : "s"} discovered in{" "}
-          <code className="font-mono text-xs">{HERMES_HOME}/profiles</code>
-        </p>
+      <header className="flex items-start gap-4">
+        <div className="flex-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <p className="text-ink-dim text-sm mt-1">
+            {profiles.length} profile{profiles.length === 1 ? "" : "s"} discovered in{" "}
+            <code className="font-mono text-xs">{HERMES_HOME}/profiles</code>
+          </p>
+        </div>
+        <Link
+          href="/profiles/new"
+          className="inline-flex items-center gap-1.5 bg-accent text-bg font-medium px-3 py-2 rounded-lg hover:bg-accent-hover"
+        >
+          <Wand2 size={14} /> New profile
+        </Link>
       </header>
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
